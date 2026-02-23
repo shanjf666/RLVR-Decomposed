@@ -44,7 +44,7 @@ python3 -m verl.trainer.main_ppo \
     critic.ppo_max_token_len_per_gpu=64000 \
     critic.model.fsdp_config.param_offload=False \
     critic.model.fsdp_config.optimizer_offload=False \
-    trainer.experiment_name="MATH-Qwen2.5-Math-7B-GRPO" \
+    trainer.experiment_name="MATH-Qwen2.5-Math-7B-PPO" \
     algorithm.kl_ctrl.kl_coef=$kl_coef \
     trainer.critic_warmup=0 \
     trainer.logger=['wandb'] \
