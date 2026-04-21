@@ -33,6 +33,7 @@ for MODEL_PATH in "${MODELS[@]}"; do
 
     MODEL_NAME=$(basename "$MODEL_PATH")
     MODEL_SUMMARY="${BASE_OUTPUT_DIR}/${MODEL_NAME}/summary.txt"
+    MODEL_SUMMARY_JSON="${BASE_OUTPUT_DIR}/${MODEL_NAME}/summary.json"
     mkdir -p "${BASE_OUTPUT_DIR}/${MODEL_NAME}"
     
     echo "===== Evaluation Summary for $MODEL_NAME =====" > "$MODEL_SUMMARY"
@@ -53,26 +54,46 @@ for MODEL_PATH in "${MODELS[@]}"; do
         echo "Log saved to: $CURRENT_OUTPUT_DIR"
         echo "--------------------------------------------------------"
 
-        # 1. 运行 eval.py 生成预测结果并评分
-        python eval.py \
-          --model_name="$MODEL_PATH" \
-          --datasets="$DATASET" \
-          --split="$DS_SPLIT" \
-          --output_dir="$CURRENT_OUTPUT_DIR" \
-          --max_tokens=$MAX_TOKENS \
-          --num_gpus=$NUM_GPUS \
-          --temperature=$TEMPERATURE \
-          --num_generation=$NUM_GENERATION
+        # 1. 运行 eval.py 分片推理 (Data Parallelism)
+        echo "Launching $NUM_GPUS Data Parallel processes..."
+        PIDS=()
+        for (( i=0; i<$NUM_GPUS; i++ )); do
+            # 为每个进程指定单卡，并加上 shard 信息
+            CUDA_VISIBLE_DEVICES=$i python eval.py \
+              --model_name="$MODEL_PATH" \
+              --datasets="$DATASET" \
+              --split="$DS_SPLIT" \
+              --output_dir="$CURRENT_OUTPUT_DIR" \
+              --max_tokens=$MAX_TOKENS \
+              --num_gpus=1 \
+              --temperature=$TEMPERATURE \
+              --num_generation=$NUM_GENERATION \
+              --num_shards=$NUM_GPUS \
+              --shard_id=$i &
+            PIDS+=($!)
+        done
+
+        # 等待所有后台推理进程执行完毕
+        for pid in "${PIDS[@]}"; do
+            wait $pid
+        done
+
+        # 合并所有分片的结果
+        echo "All shards completed. Merging results."
+        GENERATED_FILE="$CURRENT_OUTPUT_DIR/merged_results.jsonl"
+        cat "$CURRENT_OUTPUT_DIR"/*-shard_*.jsonl > "$GENERATED_FILE" 2>/dev/null
+        
+        # 清理碎片文件 (可选)
+        rm -f "$CURRENT_OUTPUT_DIR"/*-shard_*.jsonl
 
         # 2. 自动计算指标
-        GENERATED_FILE=$(ls -t "$CURRENT_OUTPUT_DIR"/*.jsonl | head -n 1)
-        
-        if [ -f "$GENERATED_FILE" ]; then
+        if [ -s "$GENERATED_FILE" ]; then
             echo "[Metrics Result] $MODEL_NAME | $DATASET ($DS_SPLIT):"
             python calculate_metrics.py \
                 --file_path "$GENERATED_FILE" \
                 --n_samples $NUM_GENERATION \
                 --summary_file "$MODEL_SUMMARY" \
+                --summary_json "$MODEL_SUMMARY_JSON" \
                 --model_name "$MODEL_NAME" \
                 --dataset_name "$DATASET"
         else

@@ -52,6 +52,7 @@ if __name__ == "__main__":
     parser.add_argument("--summary_file", type=str, default=None, help="Path to append summary results")
     parser.add_argument("--model_name", type=str, default="Unknown", help="Model name for summary")
     parser.add_argument("--dataset_name", type=str, default="Unknown", help="Dataset name for summary")
+    parser.add_argument("--summary_json", type=str, default=None, help="Path to save summary results in JSON format")
     args = parser.parse_args()
    
     Ks = [1, 2, 4, 8, 16, 32, 64, 128, 256]
@@ -66,10 +67,43 @@ if __name__ == "__main__":
         unbiased_pass_k_accuracy = unbiased_pass_at_k_accuracy(test_file, k=K, n=args.n_samples)
         results[K] = unbiased_pass_k_accuracy
 
+    pass1 = results.get(1, 0.0)
+    pass16 = results.get(16, 0.0)
+
     if args.summary_file:
         import os
         os.makedirs(os.path.dirname(args.summary_file), exist_ok=True)
         with open(args.summary_file, "a") as f:
-            pass1 = results.get(1, 0.0)
-            pass16 = results.get(16, 0.0)
             f.write(f"Model: {args.model_name} | Dataset: {args.dataset_name} | Pass@1: {pass1:.4f} | Pass@16: {pass16:.4f}\n")
+
+    if args.summary_json:
+        import os
+        os.makedirs(os.path.dirname(args.summary_json), exist_ok=True)
+        summary_data = []
+        if os.path.exists(args.summary_json):
+            try:
+                with open(args.summary_json, "r") as f:
+                    summary_data = json.load(f)
+            except Exception:
+                pass
+        
+        entry = {
+            "model": args.model_name,
+            "dataset": args.dataset_name,
+            "pass@1": pass1,
+            "pass@16": pass16
+        }
+        
+        # Avoid duplicate entries for same model and dataset
+        found = False
+        for e in summary_data:
+            if e.get("model") == entry["model"] and e.get("dataset") == entry["dataset"]:
+                e.update(entry)
+                found = True
+                break
+        
+        if not found:
+            summary_data.append(entry)
+            
+        with open(args.summary_json, "w") as f:
+            json.dump(summary_data, f, indent=4)
