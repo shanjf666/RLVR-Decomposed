@@ -70,40 +70,59 @@ if __name__ == "__main__":
     pass1 = results.get(1, 0.0)
     pass16 = results.get(16, 0.0)
 
-    if args.summary_file:
-        import os
-        os.makedirs(os.path.dirname(args.summary_file), exist_ok=True)
-        with open(args.summary_file, "a") as f:
-            f.write(f"Model: {args.model_name} | Dataset: {args.dataset_name} | Pass@1: {pass1:.4f} | Pass@16: {pass16:.4f}\n")
-
-    if args.summary_json:
-        import os
-        os.makedirs(os.path.dirname(args.summary_json), exist_ok=True)
-        summary_data = []
-        if os.path.exists(args.summary_json):
-            try:
-                with open(args.summary_json, "r") as f:
-                    summary_data = json.load(f)
-            except Exception:
-                pass
-        
-        entry = {
-            "model": args.model_name,
-            "dataset": args.dataset_name,
-            "pass@1": pass1,
-            "pass@16": pass16
-        }
-        
-        # Avoid duplicate entries for same model and dataset
-        found = False
-        for e in summary_data:
-            if e.get("model") == entry["model"] and e.get("dataset") == entry["dataset"]:
-                e.update(entry)
-                found = True
-                break
-        
-        if not found:
-            summary_data.append(entry)
+    if pass1 == 0.0 and pass16 == 0.0:
+        print(f"Both Pass@1 and Pass@16 are 0.0. Assuming evaluation failed or no correct answers for {args.dataset_name}. Skipping summary write.")
+    else:
+        if args.summary_file:
+            import os
+            os.makedirs(os.path.dirname(args.summary_file), exist_ok=True)
             
-        with open(args.summary_json, "w") as f:
-            json.dump(summary_data, f, indent=4)
+            # Check for duplicates in txt file
+            duplicate_found = False
+            search_str = f"Model: {args.model_name} | Dataset: {args.dataset_name} |"
+            if os.path.exists(args.summary_file):
+                try:
+                    with open(args.summary_file, "r") as f:
+                        if any(search_str in line for line in f):
+                            duplicate_found = True
+                except Exception:
+                    pass
+            
+            if not duplicate_found:
+                with open(args.summary_file, "a") as f:
+                    f.write(f"Model: {args.model_name} | Dataset: {args.dataset_name} | Pass@1: {pass1:.4f} | Pass@16: {pass16:.4f}\n")
+            else:
+                print(f"Entry for {args.dataset_name} already exists in txt summary, skipping append.")
+
+        if args.summary_json:
+            import os
+            os.makedirs(os.path.dirname(args.summary_json), exist_ok=True)
+            summary_data = []
+            if os.path.exists(args.summary_json):
+                try:
+                    with open(args.summary_json, "r") as f:
+                        summary_data = json.load(f)
+                except Exception:
+                    pass
+            
+            entry = {
+                "model": args.model_name,
+                "dataset": args.dataset_name,
+                "pass@1": pass1,
+                "pass@16": pass16
+            }
+            
+            # Avoid duplicate entries for same model and dataset
+            found = False
+            for e in summary_data:
+                if e.get("model") == entry["model"] and e.get("dataset") == entry["dataset"]:
+                    # Do not update if already exists, as requested "skip if duplicate"
+                    found = True
+                    break
+            
+            if not found:
+                summary_data.append(entry)
+                with open(args.summary_json, "w") as f:
+                    json.dump(summary_data, f, indent=4)
+            else:
+                print(f"Entry for {args.dataset_name} already exists in json summary, skipping append.")

@@ -59,11 +59,13 @@ def main():
         print(f"Starting from index {args.resume_id} out of {len(dataset)} examples.")
         dataset = dataset.select(range(args.resume_id, len(dataset)))
         
+        data_start_idx = 0
         if args.num_shards > 1:
             chunk_size = (len(dataset) + args.num_shards - 1) // args.num_shards
             start_idx = args.shard_id * chunk_size
             end_idx = min(start_idx + chunk_size, len(dataset))
             dataset = dataset.select(range(start_idx, end_idx))
+            data_start_idx = start_idx
             print(f"Shard {args.shard_id}/{args.num_shards}: processing indices {start_idx} to {end_idx} ({len(dataset)} examples)")
 
         if "problem" in dataset.column_names:
@@ -111,7 +113,7 @@ def main():
                         "vanilla_response": r[k],
                         "question": q,
                         "answer": a,
-                        "question_id": args.resume_id + j,
+                        "question_id": args.resume_id + data_start_idx + j,
                         "generation_id": k,
                     }
                     qa_pair["response"] = r[k]

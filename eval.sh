@@ -1,9 +1,9 @@
 #!/bin/bash
+export TOKENIZERS_PARALLELISM=false
 
 # ======== 1. 配置欲评估的模型列表 ========
 MODELS=(
     "/root/autodl-fs/model/math_step_60_grpo_penalized"
-    # "/root/autodl-fs/model/another_model_path"
 )
 
 # ======== 2. 配置欲评估的数据集列表 (格式: 数据集路径:Split) ========
@@ -15,17 +15,16 @@ DATASETS=(
 )
 
 # ======== 3. 评估参数设置 ========
-NUM_GPUS=2              # 使用显卡数量
-NUM_GENERATION=16       # 每个问题的生成数量 (Pass@16)
-TEMPERATURE=0.6         # 采样温度
-BATCH_SIZE=400          # 批处理大小 (若 OOM 请调小)
-MAX_TOKENS=2048         # 单次生成最大长度
+NUM_GPUS=2
+NUM_GENERATION=16
+TEMPERATURE=0.6
+MAX_TOKENS=2048
 BASE_OUTPUT_DIR="./results"
+
 mkdir -p "$BASE_OUTPUT_DIR"
 
 # ======== 4. 执行循环评估 ========
 for MODEL_PATH in "${MODELS[@]}"; do
-    # 检查模型路径是否存在
     if [ ! -d "$MODEL_PATH" ]; then
         echo "Warning: Model path $MODEL_PATH not found, skipping..."
         continue
@@ -36,29 +35,31 @@ for MODEL_PATH in "${MODELS[@]}"; do
     MODEL_SUMMARY_JSON="${BASE_OUTPUT_DIR}/${MODEL_NAME}/summary.json"
     mkdir -p "${BASE_OUTPUT_DIR}/${MODEL_NAME}"
     
-    echo "===== Evaluation Summary for $MODEL_NAME =====" > "$MODEL_SUMMARY"
-    date >> "$MODEL_SUMMARY"
-    echo "==============================================" >> "$MODEL_SUMMARY"
+    if [ ! -f "$MODEL_SUMMARY" ]; then
+        echo "===== Evaluation Summary for $MODEL_NAME =====" > "$MODEL_SUMMARY"
+        date >> "$MODEL_SUMMARY"
+        echo "==============================================" >> "$MODEL_SUMMARY"
+    else
+        echo "" >> "$MODEL_SUMMARY"
+        echo "--- Evaluation Resumed on $(date) ---" >> "$MODEL_SUMMARY"
+    fi
     
     for ENTRY in "${DATASETS[@]}"; do
         # 拆分数据集路径和 Split
-        IFS=':' read -r DATASET DS_SPLIT <<< "$ENTRY"
+        DATASET=$(echo $ENTRY | cut -d':' -f1)
+        DS_SPLIT=$(echo $ENTRY | cut -d':' -f2)
 
-        # 清理数据集名称中的斜杠，用于创建目录
         SAFE_DS_NAME=$(echo "$DATASET" | sed 's/\//_/g')
         CURRENT_OUTPUT_DIR="${BASE_OUTPUT_DIR}/${MODEL_NAME}/${SAFE_DS_NAME}_${DS_SPLIT}"
         mkdir -p "$CURRENT_OUTPUT_DIR"
 
         echo "--------------------------------------------------------"
         echo "Processing: Model=[$MODEL_NAME] | Dataset=[$DATASET] | Split=[$DS_SPLIT]"
-        echo "Log saved to: $CURRENT_OUTPUT_DIR"
         echo "--------------------------------------------------------"
 
-        # 1. 运行 eval.py 分片推理 (Data Parallelism)
-        echo "Launching $NUM_GPUS Data Parallel processes..."
+        # 1. 运行数据并行推理
         PIDS=()
         for (( i=0; i<$NUM_GPUS; i++ )); do
-            # 为每个进程指定单卡，并加上 shard 信息
             CUDA_VISIBLE_DEVICES=$i python eval.py \
               --model_name="$MODEL_PATH" \
               --datasets="$DATASET" \
@@ -73,22 +74,17 @@ for MODEL_PATH in "${MODELS[@]}"; do
             PIDS+=($!)
         done
 
-        # 等待所有后台推理进程执行完毕
         for pid in "${PIDS[@]}"; do
             wait $pid
         done
 
-        # 合并所有分片的结果
-        echo "All shards completed. Merging results."
+        # 合并结果
         GENERATED_FILE="$CURRENT_OUTPUT_DIR/merged_results.jsonl"
         cat "$CURRENT_OUTPUT_DIR"/*-shard_*.jsonl > "$GENERATED_FILE" 2>/dev/null
-        
-        # 清理碎片文件 (可选)
         rm -f "$CURRENT_OUTPUT_DIR"/*-shard_*.jsonl
 
-        # 2. 自动计算指标
+        # 2. 计算指标
         if [ -s "$GENERATED_FILE" ]; then
-            echo "[Metrics Result] $MODEL_NAME | $DATASET ($DS_SPLIT):"
             python calculate_metrics.py \
                 --file_path "$GENERATED_FILE" \
                 --n_samples $NUM_GENERATION \
@@ -97,11 +93,9 @@ for MODEL_PATH in "${MODELS[@]}"; do
                 --model_name "$MODEL_NAME" \
                 --dataset_name "$DATASET"
         else
-            echo "Error: No result file found for $MODEL_NAME on $DATASET"
+            echo "Error: No results found for $DATASET"
         fi
-        echo "Done!"
-        echo ""
     done
 done
 
-echo "All evaluations completed! Check summary.txt in each model's directory for results."
+echo "All evaluations completed!"
