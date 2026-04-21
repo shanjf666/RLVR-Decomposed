@@ -48,11 +48,28 @@ def unbiased_pass_at_k_accuracy(file_path, k, n):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--file_path", type=str, required=True, help="Path to the JSONLines file")
+    parser.add_argument("--n_samples", type=int, default=256, help="Total number of samples generated per question")
+    parser.add_argument("--summary_file", type=str, default=None, help="Path to append summary results")
+    parser.add_argument("--model_name", type=str, default="Unknown", help="Model name for summary")
+    parser.add_argument("--dataset_name", type=str, default="Unknown", help="Dataset name for summary")
     args = parser.parse_args()
    
     Ks = [1, 2, 4, 8, 16, 32, 64, 128, 256]
-    print(f"Calculating Unbiased Pass@K for {args.file_path}")
+    # Filter Ks to only those <= n_samples
+    Ks = [k for k in Ks if k <= args.n_samples]
+    
+    results = {}
+    print(f"Calculating Unbiased Pass@K for {args.file_path} (n={args.n_samples})")
     for K in tqdm(Ks):
         print("-" * 80)
         test_file = args.file_path
-        unbiased_pass_k_accuracy = unbiased_pass_at_k_accuracy(test_file, k=K, n=256)
+        unbiased_pass_k_accuracy = unbiased_pass_at_k_accuracy(test_file, k=K, n=args.n_samples)
+        results[K] = unbiased_pass_k_accuracy
+
+    if args.summary_file:
+        import os
+        os.makedirs(os.path.dirname(args.summary_file), exist_ok=True)
+        with open(args.summary_file, "a") as f:
+            pass1 = results.get(1, 0.0)
+            pass16 = results.get(16, 0.0)
+            f.write(f"Model: {args.model_name} | Dataset: {args.dataset_name} | Pass@1: {pass1:.4f} | Pass@16: {pass16:.4f}\n")

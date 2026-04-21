@@ -56,10 +56,10 @@ def main():
         # dataset = dataset.filter(lambda example: example['level'] == 'Level 5')
         print(f"Starting from index {args.resume_id} out of {len(dataset)} examples.")
         dataset = dataset.select(range(args.resume_id, len(dataset)))
-        if "math" in dataset_name.lower():
+        if "math" in dataset_name.lower() and "aime" not in dataset_name.lower():
             prompt_key = "problem"
             answer_key = "solution"
-        elif "aime" in dataset_name.lower() or "amc23" in dataset_name.lower():
+        elif "aime" in dataset_name.lower() or "amc" in dataset_name.lower():
             prompt_key = "problem"
             answer_key = "answer"
         dataset = dataset.map(lambda x: prepare_data(x, prompt_key), num_proc=args.dataset_num_proc)
@@ -104,11 +104,11 @@ def main():
                         }
                         qa_pair["response"] = r[k]
                         output_idx += 1
-                        if "math" in dataset_name.lower():
+                        if "math" in dataset_name.lower() and "aime" not in dataset_name.lower():
                             gold_answer = extract_answer_math(a)
                             pred_answer = extract_answer_math(qa_pair["response"])
-                        elif "amc23" in dataset_name.lower() or "aime" in dataset_name.lower():
-                            gold_answer = a
+                        elif "amc" in dataset_name.lower() or "aime" in dataset_name.lower():
+                            gold_answer = str(a)
                             pred_answer = extract_answer_math(qa_pair["response"])
                         # qa_pair["label"] = pred_answer == gold_answer
                         qa_pair["label"] = math_equal(pred_answer, gold_answer, timeout=True)
