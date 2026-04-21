@@ -3,8 +3,10 @@ export TOKENIZERS_PARALLELISM=false
 
 # ======== 1. 配置欲评估的模型列表 ========
 MODELS=(
-    "/root/autodl-fs/model/math_step_45_update_both"
-    "/root/autodl-tmp/data/models/modelscope_cache/models/Qwen/Qwen3-4B-Base"
+    # "/root/autodl-fs/model/math_step_45_update_both"
+    "/root/autodl-tmp/data/models/modelscope_cache/models/lijia321/test-prompt-amc-step30"
+    "/root/autodl-tmp/data/models/modelscope_cache/models/shanjf/dapo_final_step30"
+    "/root/autodl-tmp/data/models/modelscope_cache/models/lijia321/test-math-candiate-normed_step60"
 )
 
 # ======== 2. 配置欲评估的数据集列表 (格式: 数据集路径:Split) ========
@@ -16,8 +18,8 @@ DATASETS=(
 )
 
 # ======== 3. 评估参数设置 ========
-NUM_GPUS=2
-NUM_GENERATION=16
+NUM_GPUS=4
+NUM_GENERATION=32
 TEMPERATURE=0.6
 MAX_TOKENS=8192
 BASE_OUTPUT_DIR="./results"

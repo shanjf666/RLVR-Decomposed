@@ -5,70 +5,68 @@ from collections import defaultdict
 from tqdm import tqdm
 
 
-def unbiased_pass_at_k_accuracy(file_path, k, n):
-    # Read the JSONLines file
+def bootstrap_best_of_n(data, subset_size, num_iterations=1000, seed=42):
+    np.random.seed(seed)
+    max_vals = []
+    for _ in range(num_iterations):
+        sample_indices = np.random.choice(len(data), size=subset_size, replace=True)
+        sampled_data = [data[i] for i in sample_indices]
+        max_vals.append(np.max(sampled_data))
+    return float(np.mean(max_vals))
+
+def evaluate_metrics(file_path, n_samples):
     data = []
     with open(file_path, 'r') as f:
         for line in f:
             data.append(json.loads(line.strip()))
 
-    # Group predictions by question_id
     grouped_data = defaultdict(list)
     for example in data:
         question_id = example["question_id"]
-        if len(grouped_data[question_id]) >= n:
+        if len(grouped_data[question_id]) >= n_samples:
             continue
         grouped_data[question_id].append(example)
 
-    # Calculate unbiased pass@K accuracy
-    total_pass_k_prob = 0
+    total_pass1 = 0.0
+    total_pass16 = 0.0
     total_questions = 0
     
     for question_id, examples in grouped_data.items():
-        # Count correct and total solutions for this question
-        assert len(examples) == n  # Total number of samples
-        c = sum(1 for ex in examples if ex["label"])  # Number of correct samples
-        # Apply unbiased pass@k formula
-        assert n >= k
-        # Calculate unbiased pass@k probability
-        if n - c < k:
-            prob = 1.0
+        assert len(examples) == n_samples
+        labels = [1.0 if ex["label"] else 0.0 for ex in examples]
+        
+        pass1 = np.mean(labels)
+        
+        if n_samples >= 16:
+            pass16 = bootstrap_best_of_n(labels, subset_size=16)
         else:
-            prob = 1.0 - np.prod(1.0 - k / np.arange(n - c + 1, n + 1))
+            pass16 = bootstrap_best_of_n(labels, subset_size=n_samples)
             
-        total_pass_k_prob += prob
+        total_pass1 += pass1
+        total_pass16 += pass16
         total_questions += 1
+        
+    avg_pass1 = total_pass1 / total_questions if total_questions > 0 else 0
+    avg_pass16 = total_pass16 / total_questions if total_questions > 0 else 0
     
-    # Calculate average pass@K probability across all questions
-    avg_pass_k = total_pass_k_prob / total_questions if total_questions > 0 else 0
-    print(f"Questions Number: {total_questions}, Unbiased Pass@{k}/{n}: {avg_pass_k}")
-    return avg_pass_k
+    print(f"Questions Number: {total_questions}, Pass@1 (mean): {avg_pass1:.4f}, Pass@16 (best@16): {avg_pass16:.4f}")
+    return avg_pass1, avg_pass16
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--file_path", type=str, required=True, help="Path to the JSONLines file")
-    parser.add_argument("--n_samples", type=int, default=256, help="Total number of samples generated per question")
+    parser.add_argument("--n_samples", type=int, default=32, help="Total number of samples generated per question")
     parser.add_argument("--summary_file", type=str, default=None, help="Path to append summary results")
     parser.add_argument("--model_name", type=str, default="Unknown", help="Model name for summary")
     parser.add_argument("--dataset_name", type=str, default="Unknown", help="Dataset name for summary")
     parser.add_argument("--summary_json", type=str, default=None, help="Path to save summary results in JSON format")
     args = parser.parse_args()
    
-    Ks = [1, 2, 4, 8, 16, 32, 64, 128, 256]
-    # Filter Ks to only those <= n_samples
-    Ks = [k for k in Ks if k <= args.n_samples]
+    print(f"Calculating Metrics via Bootstrapping for {args.file_path} (n={args.n_samples})")
+    print("-" * 80)
     
-    results = {}
-    print(f"Calculating Unbiased Pass@K for {args.file_path} (n={args.n_samples})")
-    for K in tqdm(Ks):
-        print("-" * 80)
-        test_file = args.file_path
-        unbiased_pass_k_accuracy = unbiased_pass_at_k_accuracy(test_file, k=K, n=args.n_samples)
-        results[K] = unbiased_pass_k_accuracy
-
-    pass1 = results.get(1, 0.0)
-    pass16 = results.get(16, 0.0)
+    pass1, pass16 = evaluate_metrics(args.file_path, args.n_samples)
 
     if pass1 == 0.0 and pass16 == 0.0:
         print(f"Both Pass@1 and Pass@16 are 0.0. Assuming evaluation failed or no correct answers for {args.dataset_name}. Skipping summary write.")
@@ -77,7 +75,6 @@ if __name__ == "__main__":
             import os
             os.makedirs(os.path.dirname(args.summary_file), exist_ok=True)
             
-            # Check for duplicates in txt file
             duplicate_found = False
             search_str = f"Model: {args.model_name} | Dataset: {args.dataset_name} |"
             if os.path.exists(args.summary_file):
@@ -112,11 +109,9 @@ if __name__ == "__main__":
                 "pass@16": pass16
             }
             
-            # Avoid duplicate entries for same model and dataset
             found = False
             for e in summary_data:
                 if e.get("model") == entry["model"] and e.get("dataset") == entry["dataset"]:
-                    # Do not update if already exists, as requested "skip if duplicate"
                     found = True
                     break
             
