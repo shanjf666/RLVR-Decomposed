@@ -3,7 +3,8 @@ export TOKENIZERS_PARALLELISM=false
 
 # ======== 1. 配置欲评估的模型列表 ========
 MODELS=(
-    "/root/autodl-fs/model/math_step_60_grpo_penalized"
+    "/root/autodl-fs/model/math_step_45_update_both"
+    "/root/autodl-tmp/data/models/modelscope_cache/models/Qwen/Qwen3-4B-Base"
 )
 
 # ======== 2. 配置欲评估的数据集列表 (格式: 数据集路径:Split) ========
@@ -18,7 +19,7 @@ DATASETS=(
 NUM_GPUS=2
 NUM_GENERATION=16
 TEMPERATURE=0.6
-MAX_TOKENS=2048
+MAX_TOKENS=8192
 BASE_OUTPUT_DIR="./results"
 
 mkdir -p "$BASE_OUTPUT_DIR"
