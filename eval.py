@@ -71,51 +71,39 @@ def main():
             raise FileExistsError(f"Output file {output_file} already exists.")
         # Create a JSONL file to store the output
         with open(os.path.join(output_dir, output_file), 'w' if args.resume_id == 0 else 'a') as f:
-            for i in tqdm(range(0, len(dataset), args.batch_size)):
-                batch = dataset[i:i + args.batch_size]
-                inputs = batch["prompt"]
-                answers = batch[answer_key]
+            inputs = dataset["prompt"]
+            answers = dataset[answer_key]
+            problems = dataset[prompt_key]
 
-                # Generate the answer
-                outputs = llm.generate(inputs, sampling_params=sampling_params, use_tqdm=True)
-                results = [[_.outputs[l].text for l in range(len(_.outputs))] for _ in outputs]
-                assert len(results[0]) == args.num_generation, f"Number of generations is not equal to {args.num_generation}, got {len(results[0])}"
+            # Generate the answer for the entire dataset at once
+            outputs = llm.generate(inputs, sampling_params=sampling_params, use_tqdm=True)
+            results = [[_.outputs[l].text for l in range(len(_.outputs))] for _ in outputs]
+            assert len(results[0]) == args.num_generation, f"Number of generations is not equal to {args.num_generation}, got {len(results[0])}"
 
-                # Prepare all outputs for batch tokenization
-                flat_outputs = []
-                output_mapping = []  # To map back to original indices
-                
-                for j in range(len(results)):
-                    for k in range(args.num_generation):
-                        flat_outputs.append(results[j][k])
-                        output_mapping.append((j, k))
-
-                # Process the results
-                output_idx = 0
-                for j, (inp, q, a, r) in enumerate(zip(inputs, batch[prompt_key], answers, results)):
-                    for k in range(args.num_generation):
-                        qa_pair = {
-                            "prompt": inp,
-                            "vanilla_response": r[k],
-                            "question": q,
-                            "answer": a,
-                            "question_id": args.resume_id + i + j,
-                            "generation_id": k,
-                        }
-                        qa_pair["response"] = r[k]
-                        output_idx += 1
-                        if "math" in dataset_name.lower() and "aime" not in dataset_name.lower():
-                            gold_answer = extract_answer_math(a)
-                            pred_answer = extract_answer_math(qa_pair["response"])
-                        elif "amc" in dataset_name.lower() or "aime" in dataset_name.lower():
-                            gold_answer = str(a)
-                            pred_answer = extract_answer_math(qa_pair["response"])
-                        # qa_pair["label"] = pred_answer == gold_answer
-                        qa_pair["label"] = math_equal(pred_answer, gold_answer, timeout=True)
-                        qa_pair["gold_answer"] = gold_answer
-                        qa_pair["pred_answer"] = pred_answer
-                        f.write(json.dumps(qa_pair) + '\n')
-                f.flush()
+            # Process the results
+            for j, (inp, q, a, r) in enumerate(zip(inputs, problems, answers, results)):
+                for k in range(args.num_generation):
+                    qa_pair = {
+                        "prompt": inp,
+                        "vanilla_response": r[k],
+                        "question": q,
+                        "answer": a,
+                        "question_id": args.resume_id + j,
+                        "generation_id": k,
+                    }
+                    qa_pair["response"] = r[k]
+                    if "math" in dataset_name.lower() and "aime" not in dataset_name.lower():
+                        gold_answer = extract_answer_math(a)
+                        pred_answer = extract_answer_math(qa_pair["response"])
+                    elif "amc" in dataset_name.lower() or "aime" in dataset_name.lower():
+                        gold_answer = str(a)
+                        pred_answer = extract_answer_math(qa_pair["response"])
+                    # qa_pair["label"] = pred_answer == gold_answer
+                    qa_pair["label"] = math_equal(pred_answer, gold_answer, timeout=True)
+                    qa_pair["gold_answer"] = gold_answer
+                    qa_pair["pred_answer"] = pred_answer
+                    f.write(json.dumps(qa_pair) + '\n')
+            f.flush()
 
 
 if __name__ == "__main__":

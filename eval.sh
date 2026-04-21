@@ -59,7 +59,6 @@ for MODEL_PATH in "${MODELS[@]}"; do
           --datasets="$DATASET" \
           --split="$DS_SPLIT" \
           --output_dir="$CURRENT_OUTPUT_DIR" \
-          --batch_size=$BATCH_SIZE \
           --max_tokens=$MAX_TOKENS \
           --num_gpus=$NUM_GPUS \
           --temperature=$TEMPERATURE \
