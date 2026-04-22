@@ -4,28 +4,22 @@ export TOKENIZERS_PARALLELISM=false
 # ======== 1. 配置欲评估的模型列表 ========
 MODELS=(
     # "/root/autodl-fs/model/math_step_45_update_both"
-    # "/root/autodl-tmp/data/models/modelscope_cache/models/lijia321/test-prompt-amc-step30"
-    # "/root/autodl-tmp/data/models/modelscope_cache/models/shanjf/dapo_final_step30"
-    # "/root/autodl-tmp/data/models/modelscope_cache/models/lijia321/test-math-candiate-normed_step60"
-    # "/root/autodl-tmp/data/models/modelscope_cache/models/shanjf/Qwen3-4B-DIV-TTRL-then-pass1"
-    # "/root/autodl-tmp/data/models/modelscope_cache/models/Qwen/Qwen3-4B-Base"
-    "/root/autodl-tmp/data/models/modelscope_cache/models/shanjf/dapo_final_prompt_normalized_step75"
-    # "/root/autodl-tmp/data/models/modelscope_cache/models/shanjf/dapo_final_prompt_normalized_step90"
-    # "/root/autodl-tmp/data/models/hf_cache/hub/models--TMLR-Group-HF--Majority-Voting-Qwen3-4B-Base-DAPO14k/snapshots/a256fb7418bfd1080f5860f4ee8f38f9d1ed7d1c"
-    # "/root/autodl-tmp/data/models/hf_cache/hub/models--TMLR-Group-HF--GT-Qwen3-4B-Base-DAPO14k/snapshots/ceefd361a7284c56643143535a9abc69944d3d01"
+    "/root/autodl-tmp/data/models/modelscope_cache/models/lijia321/test-prompt-amc-step30"
+    "/root/autodl-tmp/data/models/modelscope_cache/models/shanjf/dapo_final_step30"
+    "/root/autodl-tmp/data/models/modelscope_cache/models/lijia321/test-math-candiate-normed_step60"
 )
 
 # ======== 2. 配置欲评估的数据集列表 (格式: 数据集路径:Split) ========
 DATASETS=(
-    # "HuggingFaceH4/MATH-500:test"
+    "HuggingFaceH4/MATH-500:test"
     "math-ai/aime24:test"
-    # "AI-MO/aimo-validation-amc:train"
-    # "math-ai/aime25:test"
+    "AI-MO/aimo-validation-amc:train"
+    "math-ai/aime25:test"
 )
 
 # ======== 3. 评估参数设置 ========
 NUM_GPUS=4
-NUM_GENERATION=16
+NUM_GENERATION=32
 TEMPERATURE=0.6
 TOP_P=0.95
 TOP_K=20
