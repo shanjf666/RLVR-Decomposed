@@ -10,9 +10,8 @@ MODELS=(
     # "/root/autodl-tmp/data/models/modelscope_cache/models/shanjf/Qwen3-4B-DIV-TTRL-then-pass1"
     # "/root/autodl-tmp/data/models/modelscope_cache/models/Qwen/Qwen3-4B-Base"
     "/root/autodl-tmp/data/models/modelscope_cache/models/shanjf/dapo_final_prompt_normalized_step75"
-    # "/root/autodl-tmp/data/models/modelscope_cache/models/shanjf/dapo_final_prompt_normalized_step90"
-    # "/root/autodl-tmp/data/models/hf_cache/hub/models--TMLR-Group-HF--Majority-Voting-Qwen3-4B-Base-DAPO14k/snapshots/a256fb7418bfd1080f5860f4ee8f38f9d1ed7d1c"
-    # "/root/autodl-tmp/data/models/hf_cache/hub/models--TMLR-Group-HF--GT-Qwen3-4B-Base-DAPO14k/snapshots/ceefd361a7284c56643143535a9abc69944d3d01"
+    # 你也可以直接写 Hugging Face 的 ID，例如：
+    # "Qwen/Qwen2.5-Math-7B-Instruct"
 )
 
 # ======== 2. 配置欲评估的数据集列表 (格式: 数据集路径:Split) ========
@@ -25,6 +24,7 @@ DATASETS=(
 
 # ======== 3. 评估参数设置 ========
 NUM_GPUS=4
+TP_SIZE=2       # 每个模型实例使用的 GPU 数量 (Tensor Parallelism)。总副本数 = NUM_GPUS / TP_SIZE
 NUM_GENERATION=16
 TEMPERATURE=0.6
 TOP_P=0.95
@@ -36,9 +36,12 @@ mkdir -p "$BASE_OUTPUT_DIR"
 
 # ======== 4. 执行循环评估 ========
 for MODEL_PATH in "${MODELS[@]}"; do
-    if [ ! -d "$MODEL_PATH" ]; then
-        echo "Warning: Model path $MODEL_PATH not found, skipping..."
-        continue
+    # 只有当路径以 / 或 . 开头时，才检查本地目录是否存在
+    if [[ "$MODEL_PATH" == /* ]] || [[ "$MODEL_PATH" == .* ]]; then
+        if [ ! -d "$MODEL_PATH" ]; then
+            echo "Warning: Local model path $MODEL_PATH not found, skipping..."
+            continue
+        fi
     fi
 
     MODEL_NAME=$(basename "$MODEL_PATH")
@@ -68,21 +71,33 @@ for MODEL_PATH in "${MODELS[@]}"; do
         echo "Processing: Model=[$MODEL_NAME] | Dataset=[$DATASET] | Split=[$DS_SPLIT]"
         echo "--------------------------------------------------------"
 
-        # 1. 运行数据并行推理
+        # 1. 运行数据并行 + 张量并行推理 (DP + TP)
         PIDS=()
-        for (( i=0; i<$NUM_GPUS; i++ )); do
-            CUDA_VISIBLE_DEVICES=$i python eval.py \
+        NUM_REPLICAS=$((NUM_GPUS / TP_SIZE))
+        for (( i=0; i<$NUM_REPLICAS; i++ )); do
+            # 计算每张卡分配的 GPU ID (例如 TP_SIZE=2 时，i=0 用 0,1；i=1 用 2,3)
+            DEVICES=""
+            for (( j=0; j<$TP_SIZE; j++ )); do
+                gpu_id=$((i * TP_SIZE + j))
+                if [ -z "$DEVICES" ]; then
+                    DEVICES="$gpu_id"
+                else
+                    DEVICES="$DEVICES,$gpu_id"
+                fi
+            done
+            
+            CUDA_VISIBLE_DEVICES=$DEVICES python eval.py \
               --model_name="$MODEL_PATH" \
               --datasets="$DATASET" \
               --split="$DS_SPLIT" \
               --output_dir="$CURRENT_OUTPUT_DIR" \
               --max_tokens=$MAX_TOKENS \
-              --num_gpus=1 \
+              --num_gpus=$TP_SIZE \
               --temperature=$TEMPERATURE \
               --top_p=$TOP_P \
               --top_k=$TOP_K \
               --num_generation=$NUM_GENERATION \
-              --num_shards=$NUM_GPUS \
+              --num_shards=$NUM_REPLICAS \
               --shard_id=$i &
             PIDS+=($!)
         done

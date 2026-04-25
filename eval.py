@@ -36,12 +36,14 @@ def main():
     parser.add_argument("--shard_id", type=int, default=0)
     args = parser.parse_args()
     print(args)
-    if not os.path.exists(args.model_name):
-        print(f"Model {args.model_name} not found. Skip.")
-        return
-
     # Load the model and tokenizer
     print(f"Loading model {args.model_name}")
+    
+    # 如果是本地路径，检查是否存在
+    if args.model_name.startswith("/") or args.model_name.startswith("."):
+        if not os.path.exists(args.model_name):
+            print(f"Model {args.model_name} not found. Skip.")
+            return
     llm = LLM(args.model_name, tensor_parallel_size=args.num_gpus, dtype="bfloat16", gpu_memory_utilization=0.9, trust_remote_code=True)
     sampling_params = SamplingParams(
         n=args.num_generation, 
